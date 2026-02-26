@@ -1,0 +1,44 @@
+{% extends 'core/base.html' %}
+
+{% block content %}
+    <h2 class="text-center mb-4">Your Chats</h2>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Start a new chat</h5>
+            <form method="post" class="form-inline flex-column flex-sm-row">
+                {% csrf_token %}
+                <div class="form-group mb-2 mb-sm-0 mr-sm-2 flex-grow-1 w-100">
+                    <input type="text" name="username" class="form-control w-100" placeholder="Enter family member's username" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100 w-sm-auto mt-2 mt-sm-0">Start</button>
+            </form>
+            <small class="form-text text-muted mt-2">
+                Chats are private and messages are not stored. Closing or refreshing the page clears the conversation.
+            </small>
+        </div>
+    </div>
+
+    <div class="list-group">
+        {% for room in rooms %}
+            <a href="{% url 'core:chat-view' room_id=room.id %}" class="list-group-item list-group-item-action">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>
+                        {% if room.user_2 == user %}
+                            {{ room.user_1.username }}
+                        {% else %}
+                            {{ room.user_2.username }}
+                        {% endif %}
+                    </span>
+                    <span class="badge badge-secondary">
+                        Room #{{ room.id }}
+                    </span>
+                </div>
+            </a>
+        {% empty %}
+            <div class="list-group-item text-muted text-center">
+                No chats yet. Start one above by entering a username.
+            </div>
+        {% endfor %}
+    </div>
+{% endblock %}

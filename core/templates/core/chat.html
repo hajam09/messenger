@@ -1,0 +1,246 @@
+{% extends 'core/base.html' %}
+
+{% block content %}
+    <div class="row">
+        <div class="col-md-8 offset-md-2 mt-3">
+            <div class="card chat-card">
+                <div class="card-header">
+                    <h4 class="mb-1">Chat with
+                        {% if room.user_2 == user %}
+                            {{ room.user_1.username }}
+                        {% else %}
+                            {{ room.user_2.username }}
+                        {% endif %}
+                    </h4>
+                    <small class="text-muted">
+                        Online now:
+                        <span id="online-users">You</span>
+                    </small>
+                </div>
+                <div class="card-body chat-messages">
+                    <div id="message-container"></div>
+                </div>
+                <div class="card-footer">
+                    <form id="chat-form">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="message-input" placeholder="Type a message..." autocomplete="off">
+                            <div class="input-group-append">
+                                <button class="btn btn-primary" type="submit">Send</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebSocket Script to handle real-time chat with optional client-side encryption -->
+    <script>
+        // Per-room secret provided from the backend. All participants
+        // in this room use the same value to encrypt/decrypt.
+        const CHAT_SECRET_KEY = "{{ room.secret }}";
+
+        const roomId = {{ room.id }};
+        const currentUser = "{{ user.username }}";
+        const messageInput = document.getElementById("message-input");
+        const messageContainer = document.getElementById("message-container");
+        const scrollArea = document.querySelector(".chat-messages");
+        const onlineUsersElement = document.getElementById("online-users");
+        const onlineUsers = new Set([currentUser]);
+        let typingTimeout = null;
+        const typingIndicator = document.createElement("div");
+        typingIndicator.className = "small text-muted mt-1";
+        typingIndicator.id = "typing-indicator";
+        onlineUsersElement.parentElement.appendChild(typingIndicator);
+
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+
+        async function getCryptoKey() {
+            const keyMaterial = await window.crypto.subtle.importKey(
+                "raw",
+                encoder.encode(CHAT_SECRET_KEY),
+                { name: "PBKDF2" },
+                false,
+                ["deriveKey"]
+            );
+            return window.crypto.subtle.deriveKey(
+                {
+                    name: "PBKDF2",
+                    salt: encoder.encode("messenger-chat-salt"),
+                    iterations: 100000,
+                    hash: "SHA-256",
+                },
+                keyMaterial,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
+
+        function toBase64(bytes) {
+            let binary = "";
+            bytes.forEach(b => binary += String.fromCharCode(b));
+            return btoa(binary);
+        }
+
+        function fromBase64(base64) {
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        async function encryptMessage(plainText) {
+            const key = await getCryptoKey();
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const cipherBuffer = await window.crypto.subtle.encrypt(
+                { name: "AES-GCM", iv: iv },
+                key,
+                encoder.encode(plainText)
+            );
+            const cipherBytes = new Uint8Array(cipherBuffer);
+            const combined = new Uint8Array(iv.byteLength + cipherBytes.byteLength);
+            combined.set(iv, 0);
+            combined.set(cipherBytes, iv.byteLength);
+            return toBase64(combined);
+        }
+
+        async function decryptMessage(cipherTextB64) {
+            try {
+                const combined = fromBase64(cipherTextB64);
+                const iv = combined.slice(0, 12);
+                const cipherBytes = combined.slice(12);
+                const key = await getCryptoKey();
+                const plainBuffer = await window.crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: iv },
+                    key,
+                    cipherBytes
+                );
+                return decoder.decode(plainBuffer);
+            } catch (e) {
+                // If decryption fails (e.g. wrong key), show placeholder text.
+                return "[Unable to decrypt message]";
+            }
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#039;",
+            };
+            return text.replace(/[&<>"']/g, function (m) {
+                return map[m];
+            });
+        }
+
+        function formatMessage(raw) {
+            let text = escapeHtml(raw);
+            // Basic formatting: *bold*, _italic_
+            text = text.replace(/\*(.+?)\*/g, "<strong>$1</strong>");
+            text = text.replace(/_(.+?)_/g, "<em>$1</em>");
+            // Simple emoji replacements
+            text = text.replace(/:\)/g, "😊");
+            text = text.replace(/:\(/g, "🙁");
+            text = text.replace(/<3/g, "❤️");
+            // Preserve new lines
+            text = text.replace(/\n/g, "<br>");
+            return text;
+        }
+
+        const socket = new WebSocket('ws://' + window.location.host + '/ws/chat/' + roomId + '/');
+
+        socket.onmessage = async function(e) {
+            const data = JSON.parse(e.data);
+            if (data.kind === "status") {
+                const user = data.user;
+                const status = data.status;
+
+                if (status === "online") {
+                    onlineUsers.add(user);
+                } else if (status === "offline") {
+                    onlineUsers.delete(user);
+                }
+
+                const listText = Array.from(onlineUsers).join(", ");
+                onlineUsersElement.textContent = listText || "Nobody";
+            } else if (data.kind === "typing") {
+                const fromUser = data.user;
+                const isTyping = data.is_typing;
+                if (fromUser !== currentUser) {
+                    if (isTyping) {
+                        typingIndicator.textContent = "Typing...";
+                    } else {
+                        typingIndicator.textContent = "";
+                    }
+                }
+            } else if (data.kind === "message") {
+                const encrypted = data.message;
+                const sender = data.sender;
+
+                const message = await decryptMessage(encrypted);
+
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message-row');
+                const bubble = document.createElement('div');
+
+                if (sender === currentUser) {
+                    messageElement.classList.add('message-own');
+                    bubble.classList.add('chat-bubble', 'chat-bubble-own', 'mb-1', 'py-1', 'px-2');
+                } else {
+                    messageElement.classList.add('message-other');
+                    bubble.classList.add('chat-bubble', 'chat-bubble-other', 'mb-1', 'py-1', 'px-2');
+                }
+
+                bubble.innerHTML = formatMessage(message);
+                messageElement.appendChild(bubble);
+
+                messageContainer.appendChild(messageElement);
+                if (scrollArea) {
+                    scrollArea.scrollTop = scrollArea.scrollHeight; // Auto-scroll to bottom
+                }
+            }
+        };
+
+        document.getElementById('chat-form').onsubmit = async function(e) {
+            e.preventDefault();
+            const message = messageInput.value.trim();
+            if (message !== "") {
+                const encrypted = await encryptMessage(message);
+                socket.send(JSON.stringify({
+                    'kind': 'message',
+                    'message': encrypted
+                }));
+                messageInput.value = "";  // Clear input
+                socket.send(JSON.stringify({
+                    'kind': 'typing',
+                    'is_typing': false
+                }));
+            }
+        };
+
+        // Typing indicator: send events while user is typing
+        messageInput.addEventListener("input", function () {
+            const hasText = messageInput.value.trim().length > 0;
+            socket.send(JSON.stringify({
+                'kind': 'typing',
+                'is_typing': hasText
+            }));
+
+            if (typingTimeout) {
+                clearTimeout(typingTimeout);
+            }
+            typingTimeout = setTimeout(function () {
+                socket.send(JSON.stringify({
+                    'kind': 'typing',
+                    'is_typing': false
+                }));
+            }, 2000);
+        });
+    </script>
+{% endblock %}

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messenger</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --text-color: #212529;
+            --card-bg: #ffffff;
+            --navbar-bg: #f8f9fa;
+        }
+
+        body.theme-dark {
+            --bg-color: #121212;
+            --text-color: #f8f9fa;
+            --card-bg: #1e1e1e;
+            --navbar-bg: #1f1f1f;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
+
+        .navbar {
+            background-color: var(--navbar-bg) !important;
+        }
+
+        .navbar .navbar-brand,
+        .navbar .nav-link {
+            color: var(--text-color) !important;
+        }
+
+        body.theme-dark .navbar .nav-link,
+        body.theme-dark .navbar .navbar-brand {
+            color: #f8f9fa !important;
+        }
+
+        body.theme-dark .text-muted {
+            color: #adb5bd !important;
+        }
+
+        body.theme-dark .form-control {
+            background-color: #2a2a2a;
+            color: #f8f9fa;
+            border-color: #444;
+        }
+
+        body.theme-dark .form-control::placeholder {
+            color: #868e96;
+        }
+
+        body.theme-dark .alert-info,
+        body.theme-dark .alert-success,
+        body.theme-dark .alert-danger,
+        body.theme-dark .alert-warning {
+            color: #f8f9fa;
+        }
+
+        .chat-card {
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .message-row {
+            display: flex;
+            margin-bottom: 0.5rem;
+        }
+
+        .message-own {
+            justify-content: flex-end;
+        }
+
+        .message-other {
+            justify-content: flex-start;
+        }
+
+        .chat-bubble {
+            display: inline-block;
+            max-width: 80%;
+        }
+
+        .chat-bubble-own {
+            background-color: #144d37;
+            color: #ffffff;
+        }
+
+        .chat-bubble-other {
+            background-color: #242626;
+            color: #ffffff;
+        }
+
+        @media (max-width: 576px) {
+            .container {
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+        }
+    </style>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</head>
+<body>
+<div class="container mt-4">
+    <nav class="navbar navbar-expand-lg navbar-light">
+        <a class="navbar-brand" href="{% url 'core:chat-list-view' %}">Messenger</a>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ml-auto">
+                {% if user.is_authenticated %}
+                    <li class="nav-item active">
+                        <a class="nav-link" href="{% url 'core:chat-list-view' %}">Chats</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'core:logout-view' %}">Logout</a>
+                    </li>
+                {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'core:login-view' %}">Login</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'core:register-view' %}">Register</a>
+                    </li>
+                {% endif %}
+                <li class="nav-item ml-2">
+                    <button id="theme-toggle" type="button" class="btn btn-sm btn-outline-secondary">
+                        Dark mode
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    {% if messages %}
+        <div class="mt-2">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} py-2 my-1" role="alert">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% block content %}
+    {% endblock %}
+</div>
+<script>
+    (function () {
+        let stored = localStorage.getItem('messenger-theme');
+        let body = document.body;
+        if (stored === 'dark') {
+            body.classList.add('theme-dark');
+        }
+
+        let button = document.getElementById('theme-toggle');
+        if (!button) return;
+
+        function updateLabel() {
+            if (body.classList.contains('theme-dark')) {
+                button.textContent = 'Light mode';
+            } else {
+                button.textContent = 'Dark mode';
+            }
+        }
+
+        updateLabel();
+
+        button.addEventListener('click', function () {
+            body.classList.toggle('theme-dark');
+            let mode = body.classList.contains('theme-dark') ? 'dark' : 'light';
+            localStorage.setItem('messenger-theme', mode);
+            updateLabel();
+        });
+    })();
+</script>
+</body>
+</html>

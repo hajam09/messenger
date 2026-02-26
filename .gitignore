@@ -1,0 +1,7 @@
+*.pyc
+*.coverage
+*.sqlite3
+media/
+.idea/
+**/migrations/
+/static/
